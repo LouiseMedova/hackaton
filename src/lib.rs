@@ -1,5 +1,5 @@
 #![no_std]
-use gstd::{exec, msg, prelude::*, ActorId};
+use gstd::{exec, msg, prelude::*, ActorId, debug};
 use launch_io::*;
 
 pub const WEATHER_RANGE: u32 = 5;
@@ -196,7 +196,7 @@ impl LaunchSite {
 
                 // if 1/3 or 2/3 of distance
                 // 5 percent that will be separation failure
-                if i == 0 || i == 1 && generate_event(5) {
+                if (i == 0 || i == 1) && generate_event(5) {
                     current_stat.halt = Some(RocketHalt::SeparationFailure);
                     current_stat.alive = false;
                 };
@@ -307,6 +307,7 @@ static mut SEED: u8 = 0;
 
 fn generate_event(probability: u8) -> bool {
     let seed = unsafe { SEED };
+    debug!("SEED {:?}", seed);
     unsafe { SEED = SEED.wrapping_add(1) };
     let random_input: [u8; 32] = [seed; 32];
     let (random, _) = exec::random(random_input).expect("Error in getting random number");
