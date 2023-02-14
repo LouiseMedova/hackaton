@@ -1,5 +1,5 @@
 #![no_std]
-use gstd::{exec, msg, prelude::*, ActorId, debug};
+use gstd::{debug, exec, msg, prelude::*, ActorId};
 use launch_io::*;
 
 pub const WEATHER_RANGE: u32 = 5;
@@ -19,6 +19,8 @@ pub struct LaunchSite {
     pub participants: BTreeMap<ActorId, Participant>,
     pub current_session: Option<CurrentSession>,
     pub events: BTreeMap<u32, Vec<CurrentStat>>,
+    pub state: SessionState,
+    pub session_id: u32,
 }
 
 static mut LAUNCH_SITE: Option<LaunchSite> = None;
@@ -92,6 +94,8 @@ impl LaunchSite {
             altitude: random_altitude,
             registered: Default::default(),
         });
+        self.session_id = self.session_id.saturating_add(1);
+        self.state = SessionState::Registration;
 
         msg::reply(
             Event::NewLaunch {
@@ -149,7 +153,7 @@ impl LaunchSite {
 
         let mut current_altitude = 0;
         let total_rounds = 3;
-        let _weather = session_data.weather;
+        let weather = session_data.weather;
 
         let mut current_stats: BTreeMap<ActorId, CurrentStat> = BTreeMap::new();
 
@@ -157,6 +161,7 @@ impl LaunchSite {
             current_stats.insert(
                 *id,
                 CurrentStat {
+                    participant: *id,
                     alive: true,
                     fuel_left: strategy.fuel,
                     last_altitude: 0,
@@ -203,7 +208,7 @@ impl LaunchSite {
 
                 // if last distance 10 percent od asteroid
                 // 15 percent that will be asteroid + weather factor
-                if i == 2 && generate_event(15 + session_data.weather as u8) {
+                if i == 2 && generate_event(15 + weather as u8) {
                     current_stat.halt = Some(RocketHalt::Asteroid);
                     current_stat.alive = false;
                 };
@@ -211,8 +216,10 @@ impl LaunchSite {
                 if current_stat.fuel_left < fuel_burn {
                     // fuel is over
                     current_stat.alive = false;
+                    current_stat.halt = Some(RocketHalt::NotEnoughFuel);
                 } else {
                     current_stat.last_altitude = current_altitude;
+                    current_stat.fuel_left -= fuel_burn;
                 }
 
                 // weather random affect?
@@ -224,18 +231,38 @@ impl LaunchSite {
         }
 
         let mut outcome_participants = vec![];
-        for (id, stat) in current_stats.iter() {
-            let earnings = stat.payload * session_data.payload_value as u32;
+        let mut max_fuel_left = 0;
 
-            outcome_participants.push((*id, stat.alive, stat.last_altitude, earnings));
-
-            let leaderboard_entry = self
-                .participants
-                .get_mut(&id)
-                .expect("Should have existed in leaderboards");
-
-            leaderboard_entry.balance += earnings;
+        for (_, stat) in current_stats.iter() {
+            if stat.alive && stat.fuel_left > max_fuel_left {
+                max_fuel_left = stat.fuel_left;
+            }
         }
+
+        for (id, stat) in current_stats.iter() {
+            if stat.alive {
+                let coef = if stat.fuel_left == 0 {
+                    // 1.7 if fuel tank = 0
+                    17
+                } else {
+                    // max fuel left -> multiply by 0.5
+                    5 * stat.fuel_left / max_fuel_left
+                };
+
+                let earnings = stat.payload * session_data.payload_value as u32 * (coef / 10);
+
+                outcome_participants.push((*id, stat.alive, stat.last_altitude, earnings));
+
+                let leaderboard_entry = self
+                    .participants
+                    .get_mut(&id)
+                    .expect("Should have existed in leaderboards");
+
+                leaderboard_entry.balance += earnings;
+            }
+        }
+
+        self.state = SessionState::SessionIsOver;
 
         // handle round results
 

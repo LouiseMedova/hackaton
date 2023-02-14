@@ -82,6 +82,7 @@ pub struct CurrentSesionInfo {
 
 #[derive(Default, Encode, Decode, TypeInfo, Clone)]
 pub struct CurrentStat {
+    pub participant: ActorId,
     pub alive: bool,
     pub fuel_left: u32,
     pub last_altitude: u32,
@@ -102,6 +103,8 @@ pub struct LaunchSite {
     pub participants: BTreeMap<ActorId, Participant>,
     pub current_session: Option<CurrentSession>,
     pub events: BTreeMap<u32, Vec<CurrentStat>>,
+    pub state: SessionState,
+    pub session_id: u32,
 }
 
 #[derive(Default, Encode, Decode, TypeInfo)]
@@ -132,4 +135,20 @@ pub enum RocketHalt {
     Overfuelled,
     SeparationFailure,
     Asteroid,
+    NotEnoughFuel,
+}
+
+#[derive(Encode, Decode, TypeInfo, Debug, Clone)]
+pub enum SessionState {
+    SessionIsOver,
+    NoSession,
+    Registration,
+    Asteroid,
+    NotEnoughFuel,
+}
+
+impl Default for SessionState {
+    fn default() -> Self {
+        SessionState::NoSession
+    }
 }
