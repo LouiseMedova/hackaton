@@ -80,9 +80,9 @@ pub struct CurrentSesionInfo {
     pub payload_value: u32,
 }
 
-#[derive(Default, Encode, Decode, TypeInfo, Clone)]
+#[derive(Default, Encode, Decode, TypeInfo, Clone, Debug)]
 pub struct CurrentStat {
-    pub participant: ActorId,
+ //   pub participant: ActorId,
     pub alive: bool,
     pub fuel_left: u32,
     pub last_altitude: u32,
@@ -96,7 +96,7 @@ pub struct ParticipantState {
     pub balance: u32,
 }
 
-#[derive(Default, Encode, Decode, TypeInfo)]
+#[derive(Default, Encode, Decode, TypeInfo, Debug)]
 pub struct LaunchSite {
     pub name: String,
     pub owner: ActorId,
@@ -107,13 +107,13 @@ pub struct LaunchSite {
     pub session_id: u32,
 }
 
-#[derive(Default, Encode, Decode, TypeInfo)]
+#[derive(Default, Encode, Decode, TypeInfo, Debug)]
 pub struct SessionStrategy {
     pub fuel: u32,
     pub payload: u32,
 }
 
-#[derive(Default, Encode, Decode, TypeInfo)]
+#[derive(Default, Encode, Decode, TypeInfo, Debug)]
 pub struct CurrentSession {
     pub altitude: u32,
     pub weather: u32,
@@ -122,12 +122,11 @@ pub struct CurrentSession {
     pub registered: BTreeMap<ActorId, SessionStrategy>,
 }
 
-#[derive(Default, Encode, Decode, TypeInfo)]
+#[derive(Default, Encode, Decode, TypeInfo, Debug)]
 pub struct Participant {
     pub name: String,
     pub balance: u32,
 }
-
 
 #[derive(Encode, Decode, TypeInfo, Debug, Clone)]
 pub enum RocketHalt {
@@ -136,15 +135,14 @@ pub enum RocketHalt {
     SeparationFailure,
     Asteroid,
     NotEnoughFuel,
+    EngineError,
 }
 
-#[derive(Encode, Decode, TypeInfo, Debug, Clone)]
+#[derive(Encode, Decode, TypeInfo, Debug, Clone, PartialEq, Eq)]
 pub enum SessionState {
     SessionIsOver,
     NoSession,
     Registration,
-    Asteroid,
-    NotEnoughFuel,
 }
 
 impl Default for SessionState {

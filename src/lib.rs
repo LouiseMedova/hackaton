@@ -12,7 +12,9 @@ pub const MAX_PAYLOAD_VALUE: u32 = 120;
 pub const MIN_ALTITUDE: u32 = 8_000;
 pub const MAX_ALTITUDE: u32 = 15_000;
 
-#[derive(Default, Encode, Decode, TypeInfo)]
+pub const MAX_PLAYERS: u8 = 4;
+
+#[derive(Default, Encode, Decode, TypeInfo, Debug)]
 pub struct LaunchSite {
     pub name: String,
     pub owner: ActorId,
@@ -79,7 +81,7 @@ impl LaunchSite {
         let actor_id = msg::source();
 
         assert_eq!(actor_id, self.owner);
-        assert!(self.current_session.is_none());
+        assert!(self.state == SessionState::SessionIsOver || self.state == SessionState::NoSession);
 
         // 0 - Sunny, 1 - Cloudy, 2 - Rainy, 3 - Stormy, 4 - Thunder, 5 - Tornado
         let random_weather = generate(0, WEATHER_RANGE);
@@ -96,6 +98,7 @@ impl LaunchSite {
         });
         self.session_id = self.session_id.saturating_add(1);
         self.state = SessionState::Registration;
+        self.events = BTreeMap::new();
 
         msg::reply(
             Event::NewLaunch {
@@ -115,6 +118,8 @@ impl LaunchSite {
         let actor_id = msg::source();
 
         assert!(self.current_session.is_some());
+
+        assert!(fuel_amount <= 100 && payload_amount <= 100, "Limit is 100%");
 
         let current_session = self
             .current_session
@@ -148,7 +153,7 @@ impl LaunchSite {
     fn execute_session(&mut self) {
         let session_data = self
             .current_session
-            .take()
+            .as_ref()
             .expect("There should be active session to execute");
 
         let mut current_altitude = 0;
@@ -161,7 +166,7 @@ impl LaunchSite {
             current_stats.insert(
                 *id,
                 CurrentStat {
-                    participant: *id,
+                    //   participant: *id,
                     alive: true,
                     fuel_left: strategy.fuel,
                     last_altitude: 0,
@@ -178,7 +183,7 @@ impl LaunchSite {
                 // if 1/3 or 2/3 of distance the probabilty of separation failure
 
                 // risk factor of burning fuel
-                let fuel_burn = strategy.payload / total_rounds;
+                let fuel_burn = (strategy.payload + 2 * weather) / total_rounds;
 
                 let current_stat = current_stats.get_mut(&id).expect("all have stats");
 
@@ -186,29 +191,35 @@ impl LaunchSite {
                     continue;
                 } // already failed;
 
-                // if 1/3 distance and fuel > 80%
-                if i == 0 && current_stat.fuel_left >= 80 && generate_event(10) {
+                // if 1/3 distance then probability of engine error is 3%
+                if i == 0 && generate_event(3) {
+                    current_stat.halt = Some(RocketHalt::EngineError);
+                    current_stat.alive = false;
+                };
+
+                // if 1/3 distance and fuel > 80% - risk factor of weather
+                if i == 0 && current_stat.fuel_left >= (80 - 2 * weather) && generate_event(10) {
                     current_stat.halt = Some(RocketHalt::Overfuelled);
                     current_stat.alive = false;
                 };
 
-                // if 1/3 or 2/3 of distance and filled > 80%
+                // if  2/3 of distance and filled > 80% - risk factor of weather
                 // 10 percent that will be overfilled
-                if (i == 0 || i == 1) && strategy.payload >= 80 && generate_event(10) {
+                if i == 1 && strategy.payload >= (80 - 2 * weather) && generate_event(10) {
                     current_stat.halt = Some(RocketHalt::Overfilled);
                     current_stat.alive = false;
                 };
 
-                // if 1/3 or 2/3 of distance
+                // if 2/3 of distance
                 // 5 percent that will be separation failure
-                if (i == 0 || i == 1) && generate_event(5) {
+                if i == 1 && generate_event(5 + weather as u8) {
                     current_stat.halt = Some(RocketHalt::SeparationFailure);
                     current_stat.alive = false;
                 };
 
                 // if last distance 10 percent od asteroid
                 // 15 percent that will be asteroid + weather factor
-                if i == 2 && generate_event(15 + weather as u8) {
+                if i == 2 && generate_event(10 + weather as u8) {
                     current_stat.halt = Some(RocketHalt::Asteroid);
                     current_stat.alive = false;
                 };
@@ -249,8 +260,7 @@ impl LaunchSite {
                     5 * stat.fuel_left / max_fuel_left
                 };
 
-                let earnings = stat.payload * session_data.payload_value as u32 * (coef / 10);
-
+                let earnings = stat.payload * session_data.payload_value as u32 * coef / 10;
                 outcome_participants.push((*id, stat.alive, stat.last_altitude, earnings));
 
                 let leaderboard_entry = self
